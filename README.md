@@ -2,6 +2,12 @@
 
 Dify Enterprise 公式ドキュメント（enterprise-docs.dify.ai）のローカル検索ヘルパー。CLI と FastAPI サーバーで高速に検索し、Docker Compose / Helm 構成の要約も行える。
 
+## Who is this for?
+- People operating Dify Enterprise in production
+- Engineers tired of opaque RAG pipelines
+- Teams wanting deterministic, debuggable AI-assisted workflows
+- Cursor users who want a local, structure-first doc assistant
+
 ## 主な特徴
 
 - SQLite FTS5 による全文検索
