@@ -122,19 +122,51 @@ python -m docbot.cli helm "dify-helm" --namespace my-ns --set api.replicas=2
 
 ## upgrade
 
-Non-Skippable を考慮したアップグレード経路を表示する。dify-helm release notes から必須経由バージョンを抽出し、`--from` から `--to` の各ホップごとに主な作業を箇条書きで出力する。
+Non-Skippable を考慮したアップグレード経路を表示する。storage/search で release notes を検索し、必須経由バージョン（appVersion 基準）を抽出。各 Hop ごとに主な作業を箇条書きと Sources URL で出力。
 
 ```
-python -m docbot.cli upgrade --from X.Y.Z --to X.Y.Z
+python -m docbot.cli upgrade --from X.Y.Z --to X.Y.Z [--values PATH] [--lang en-us]
 ```
+
+| オプション | 説明 | デフォルト |
+|-----------|------|-----------|
+| `--from` | 現在の appVersion | 必須 |
+| `--to` | 目標 appVersion | 必須 |
+| `--values` | values.yaml パス（オプション） | なし |
+| `--lang` | 検索言語 | en-us |
 
 **例**:
 
 ```bash
 python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5
+python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5 --lang en-us
 ```
 
-出力には根拠 URL（release notes の該当ページ）が含まれる。
+**出力例**:
+
+```
+Upgrade path:
+2.8.2 → 3.2.2 → 3.6.5
+
+## Hop 1: 2.8.2 → 3.2.2
+- Update Helm values
+- Plugins Migration
+- ...
+Sources:
+- https://langgenius.github.io/dify-helm/pages/3_2_2.md
+```
+
+---
+
+## stats
+
+DB のサイズとページ数を表示する。
+
+```
+python -m docbot.cli stats [--db PATH]
+```
+
+未作成時は「DB が存在しません」と表示。
 
 ---
 

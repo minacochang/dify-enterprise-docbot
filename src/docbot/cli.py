@@ -2,6 +2,7 @@
 """docbot CLI: search / compose / helm"""
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -529,50 +530,45 @@ def run_helm(
     return 0
 
 
-def run_upgrade(from_ver: str, to_ver: str) -> int:
-    """Non-Skippable を考慮したアップグレード経路を表示"""
-    from docbot.upgrade import (
-        fetch_sidebar,
-        parse_sidebar,
-        compute_upgrade_path,
-        fetch_release_notes,
-        extract_key_steps,
-    )
+def run_stats(db_path: str | None = None) -> int:
+    """DB のサイズとページ数を表示"""
+    from docbot.storage import open_db
+    from docbot.config import CFG
 
-    sidebar = fetch_sidebar()
-    if not sidebar:
-        print("ERROR: dify-helm _sidebar.md を取得できませんでした。")
+    path = db_path or CFG.db_path
+    if not os.path.isabs(path):
+        path = os.path.join(os.getcwd(), path)
+
+    if not os.path.exists(path):
+        print(f"DB が存在しません: {path}")
+        print("python -m docbot.ingest を実行してインデックスを作成してください。")
         return 1
 
-    entries = parse_sidebar(sidebar)
-    path = compute_upgrade_path(entries, from_ver, to_ver)
-    if not path:
-        print(f"ERROR: アップグレード経路を計算できませんでした（--from {from_ver} --to {to_ver}）")
-        return 1
+    total = os.path.getsize(path)
+    size_str = f"{total:,} B"
+    for unit, div in [("KB", 1024), ("MB", 1024**2), ("GB", 1024**3)]:
+        val = total / div
+        if val >= 1:
+            size_str = f"{val:.1f} {unit}"
+            break
 
-    non_skip_in_path = [e for e in path if e["non_skippable"]]
-    print(f"Upgrade path: {from_ver} → {to_ver}")
-    if non_skip_in_path:
-        print(f"⚠️ Non-Skippable 経由必須: {', '.join(e['version'] for e in non_skip_in_path)}")
-    print()
+    conn = open_db(db_path)
+    cnt = conn.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+    by_lang = dict(conn.execute("SELECT lang, COUNT(*) FROM pages GROUP BY lang").fetchall())
+    conn.close()
 
-    for e in path:
-        ver = e["version"]
-        ns = " [Non-Skippable]" if e["non_skippable"] else ""
-        print(f"## {ver}{ns}")
-        print(f"Source: {e['url']}")
-        md = fetch_release_notes(e["url"])
-        if md:
-            steps = extract_key_steps(md)
-            if steps:
-                for s in steps[:8]:
-                    print(f"  - {s[:200]}{'…' if len(s) > 200 else ''}")
-            else:
-                lead = (md.split("\n\n")[1:2] or [""])[0][:300]
-                if lead:
-                    print(f"  - {lead.strip()[:200]}…")
-        print()
+    print(f"DB: {path}")
+    print(f"Size: {size_str}")
+    print(f"Pages: {cnt}")
+    for lang, n in sorted(by_lang.items()):
+        print(f"  - {lang}: {n}")
     return 0
+
+
+def run_upgrade(from_ver: str, to_ver: str, lang: str = "en-us") -> int:
+    """Non-Skippable を考慮したアップグレード経路を表示（appVersion 基準）"""
+    from docbot.upgrade import run_upgrade as _run_upgrade
+    return _run_upgrade(from_ver, to_ver, lang)
 
 
 def run_search(base: str, query: str, lang: str | None, limit: int, as_json: bool) -> int:
@@ -646,12 +642,20 @@ def main() -> int:
             args.values_path, args.set_args or [], args.chart, args.chart_version
         )
 
+    if argv and argv[0] == "stats":
+        p = argparse.ArgumentParser(prog="docbot stats", description="DB のサイズとページ数を表示")
+        p.add_argument("--db", default=None, help="DB パス（未指定で data/index.db）")
+        args = p.parse_args(argv[1:])
+        return run_stats(args.db)
+
     if argv and argv[0] == "upgrade":
         p = argparse.ArgumentParser(prog="docbot upgrade", description="Non-Skippable を考慮したアップグレード経路")
         p.add_argument("--from", dest="from_ver", required=True, metavar="X.Y.Z")
         p.add_argument("--to", dest="to_ver", required=True, metavar="X.Y.Z")
+        p.add_argument("--values", default=None, help="values.yaml パス（オプション）")
+        p.add_argument("--lang", choices=["ja-jp", "en-us"], default="en-us")
         args = p.parse_args(argv[1:])
-        return run_upgrade(args.from_ver, args.to_ver)
+        return run_upgrade(args.from_ver, args.to_ver, args.lang)
 
     if argv and argv[0] == "search":
         argv = argv[1:]
@@ -670,6 +674,7 @@ def main() -> int:
         print("       docbot compose <query> [--lang ja-jp|en-us]", file=sys.stderr)
         print("       docbot helm [query] [--chart PATH] [--chart-version X.Y.Z] [--values PATH] [--set K=V] ...", file=sys.stderr)
         print("       docbot upgrade --from X.Y.Z --to X.Y.Z", file=sys.stderr)
+        print("       docbot stats  # DB サイズ・ページ数確認", file=sys.stderr)
         return 2
 
     return run_search(args.base, q, args.lang, args.limit, args.json)

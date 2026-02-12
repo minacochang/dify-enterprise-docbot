@@ -45,8 +45,10 @@ python -m docbot.cli compose "Docker Compose" --lang ja-jp  # compose
 python -m docbot.cli helm "Dify Helm Chart" --lang en-us    # helm（要 helm CLI）
 python -m docbot.cli helm "Dify Helm Chart" --chart-version 3.7.5 --values ./values.yaml  # バージョン固定
 python -m docbot.cli helm --chart ./dify-3.7.4.tgz  # ローカル chart を直接指定
-python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮したアップグレード経路
+python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮したアップグレード経路（appVersion 基準）
 ```
+
+`upgrade` は storage/search で release notes を検索し、Non-Skippable を考慮した経路（例: 2.8.2 → 3.2.2 → 3.6.5）と各 Hop の作業・Sources を Markdown で出力する。
 
 ### 検索対象
 
@@ -64,6 +66,7 @@ python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮�
 | [docs/indexing.md](docs/indexing.md) | ingest / DB 再生成 / FTS5 / 日本語 N-gram |
 | [docs/ranking.md](docs/ranking.md) | ja-jp の再スコアの考え方 |
 | [docs/cursor-workflow.md](docs/cursor-workflow.md) | Cursor での docbot → Sources → Answer の運用手順 |
+| [docs/cursor-agent-prompts.md](docs/cursor-agent-prompts.md) | Cursor Agent 用プロンプト例集（コピペ可） |
 | [docs/design-decisions.md](docs/design-decisions.md) | SQLite/N-gram、Vector DB なしの理由とトレードオフ |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 0 件・lang 違い・DB 作り直し・helm template 失敗など |
 | [docs/version-upgrade.md](docs/version-upgrade.md) | バージョンアップ時のチェックリスト |

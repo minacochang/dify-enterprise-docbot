@@ -180,8 +180,8 @@ def _is_anchor_noise_en(row: tuple, query: str) -> bool:
 
 
 def _sanitize_fts_query(q: str) -> str:
-    """FTS5 でエラーになる文字を置換（. は句読点扱いで syntax error になりうる）"""
-    return q.replace(".", " ").replace(":", " ")
+    """FTS5 でエラーになる文字を置換"""
+    return q.replace(".", " ").replace(":", " ").replace("-", " ")
 
 def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, limit: int = 20) -> list[dict]:
     fts_query = _sanitize_fts_query(query)
@@ -210,21 +210,23 @@ def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, 
             (fts_query, fetch_limit),
         ).fetchall()
 
+    def _row_to_hit(r):
+        return {
+            "url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4],
+            "headings": r[5] if len(r) > 5 else "",
+            "body_prefix": r[6] if len(r) > 6 else "",
+            "score": None,
+        }
+
     if lang == "ja-jp" and rows:
         scored = [(r, _rescore_ja(r, query)) for r in rows]
         scored.sort(key=lambda x: x[1], reverse=True)
         cut = scored[:limit]
-        return [
-            {"url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4], "score": s}
-            for r, s in cut
-        ]
+        return [{**_row_to_hit(r), "score": s} for r, s in cut]
     if lang == "en-us" and rows:
         # アンカーのみノイズを後ろに寄せる、他は bm25 順維持
         rows = sorted(rows, key=lambda r: (_is_anchor_noise_en(r, query), 0))[:limit]
     elif lang and len(rows) > limit:
         rows = rows[:limit]
 
-    return [
-        {"url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4], "score": None}
-        for r in rows
-    ]
+    return [_row_to_hit(r) for r in rows]
