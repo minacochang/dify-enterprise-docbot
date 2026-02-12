@@ -19,7 +19,7 @@ python -m docbot.ingest
 python -m docbot.cli "Docker Compose" --lang ja-jp
 ```
 
-DB は `data/index.db` に格納。再生成: `rm -f data/index.db data/index.db-shm data/index.db-wal && python -m docbot.ingest`
+DB は `data/index.db` に格納。再生成: `rm -f data/index.db data/index.db-shm data/index.db-wal && python -m docbot.ingest`（目安: 約 7〜8 分）
 
 ### 動作確認
 
@@ -52,7 +52,7 @@ python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮�
 
 ### 検索対象
 
-- Enterprise docs（enterprise-docs.dify.ai）
+- Enterprise docs（enterprise-docs.dify.ai の `/versions/` 配下の全バージョン・全言語）
 - dify-helm release notes（https://langgenius.github.io/dify-helm/）
 
 ## ドキュメント

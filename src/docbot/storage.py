@@ -44,6 +44,24 @@ def _query_to_ngrams_or(query: str, max_terms: int = MAX_NGRAM_TERMS) -> str:
     return " OR ".join(f'"{t}"' for t in escaped)
 
 
+def _normalize_cjk(text: str) -> str:
+    """CJK文字のみ抽出（ひらがな・カタカナ・中日韩統合漢字）"""
+    s = "".join(text.split())
+    return re.sub(r"[^\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]", "", s)
+
+
+def _query_to_ngrams_cjk(query: str, max_terms: int = 60) -> str | None:
+    """zh-cn用: CJKのみで2/3-gram ORクエリ。CJKが2文字未満ならNone（フォールバック用）"""
+    cjk = _normalize_cjk(query)
+    if len(cjk) < 2:
+        return None
+    toks = _make_ngrams_q(cjk, ns=(3, 2), max_terms=max_terms)
+    if not toks:
+        return None
+    escaped = [t.replace('"', '""') for t in toks]
+    return " OR ".join(f'"{t}"' for t in escaped)
+
+
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 
@@ -188,6 +206,13 @@ def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, 
     if lang == "ja-jp":
         fts_query = _query_to_ngrams_or(query)
         fetch_limit = CANDIDATE_LIMIT
+    elif lang == "zh-cn":
+        ngram_qt = _query_to_ngrams_cjk(query)
+        if ngram_qt is not None:
+            fts_query = ngram_qt
+            fetch_limit = CANDIDATE_LIMIT
+        else:
+            fetch_limit = max(limit, 80)
     else:
         fetch_limit = max(limit, 80) if lang == "en-us" else limit
 
@@ -219,6 +244,11 @@ def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, 
         }
 
     if lang == "ja-jp" and rows:
+        scored = [(r, _rescore_ja(r, query)) for r in rows]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        cut = scored[:limit]
+        return [{**_row_to_hit(r), "score": s} for r, s in cut]
+    if lang == "zh-cn" and rows:
         scored = [(r, _rescore_ja(r, query)) for r in rows]
         scored.sort(key=lambda x: x[1], reverse=True)
         cut = scored[:limit]

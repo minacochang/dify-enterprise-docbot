@@ -6,20 +6,22 @@ Dify Enterprise ドキュメントやフォールバック先が更新された�
 
 **影響ファイル**: `src/docbot/config.py`
 
-現在は `3-0-x` に固定。Docs が `3-1-x` 等に変わった場合、以下を更新する。
+`/versions/` 配下の全バージョン・全言語を対象とする。ingest は llms.txt から URL を動的に取得するため、新バージョン追加時は config 変更不要。
 
-| 項目 | 場所 | 対応 |
-|------|------|------|
-| `base_path` | config.py | `/versions/3-1-x/` 等に変更 |
-| `allow_re` | config.py | 正規表現内の `3-0-x` を新バージョンに変更 |
-| `seed_urls` | config.py | introduction の URL を新バージョンに変更 |
+| 項目 | 説明 |
+|------|------|
+| `allow_re` | `/versions/[version]/[lang]` 形式の URL を許容 |
+| `seed_urls` | llms.txt 取得失敗時のフォールバック |
+| `max_pages` | 全版を拾うため 2500（必要に応じて調整） |
 
-**手順**: config 更新後、**必ず DB 再生成**する。
+**手順**: 通常は config 変更不要。DB 再生成で最新ドキュメントが取得される。
 
 ```bash
 rm -f data/index.db data/index.db-shm data/index.db-wal
 python -m docbot.ingest
 ```
+
+所要時間目安: 約 7〜8 分
 
 ## 2. compose / helm フォールバック URL
 

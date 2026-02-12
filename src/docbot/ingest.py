@@ -92,6 +92,27 @@ async def try_sitemap(client: httpx.AsyncClient) -> list[str] | None:
     return urls or None
 
 
+# llms.txt 内の [text](url) から URL を抽出する正規表現
+_LLMS_LINK_RE = re.compile(r"\((https?://[^)\s]+)\)")
+
+
+async def fetch_doc_urls_from_llms(client: httpx.AsyncClient) -> list[str] | None:
+    """
+    llms.txt を取得し、/versions/ 配下の URL を抽出して返す。
+    失敗時は None。
+    """
+    llms_url = f"https://{CFG.host}/llms.txt"
+    text = await fetch_text(client, llms_url, accept_any_text=True)
+    if not text:
+        return None
+    urls = []
+    for m in _LLMS_LINK_RE.finditer(text):
+        url = m.group(1).strip()
+        if is_allowed(url):
+            urls.append(url)
+    return urls if urls else None
+
+
 def extract_helm_page_links(sidebar_content: str) -> list[str]:
     """
     dify-helm _sidebar.md から /pages/X.md リンクを抽出し、フル URL に変換。
@@ -179,11 +200,21 @@ async def main() -> None:
         parent.mkdir(parents=True, exist_ok=True)
 
     conn = open_db(db_path)
-    queue: deque[tuple[str, int]] = deque((u, 0) for u in CFG.seed_urls)
     done: set[str] = set()
     count = 0
 
     async with httpx.AsyncClient() as client:
+        # seed_urls で BFS + llms.txt の URL を追加（両方使って網羅性を確保）
+        initial_urls = list(CFG.seed_urls)
+        llms_urls = await fetch_doc_urls_from_llms(client)
+        if llms_urls:
+            initial_urls.extend(llms_urls)
+            print(f"seed_urls + llms.txt: {len(CFG.seed_urls)} + {len(llms_urls)} → {len(initial_urls)} 件")
+        else:
+            print("llms.txt 取得失敗、seed_urls のみでクロール開始")
+        initial_urls = list(dict.fromkeys(initial_urls))  # 重複除去
+        queue: deque[tuple[str, int]] = deque((u, 0) for u in initial_urls)
+
         while queue and count < CFG.max_pages:
             batch = []
             while queue and len(batch) < CFG.concurrency:
@@ -196,20 +227,31 @@ async def main() -> None:
             if not batch:
                 break
 
-            tasks = [fetch_text(client, url) for url, depth in batch]
+            tasks = [fetch_text(client, url, accept_any_text=True) for url, depth in batch]
             results = await asyncio.gather(*tasks)
             now = int(time.time())
 
-            for (url, depth), html in zip(batch, results):
-                if not html:
+            for (url, depth), raw in zip(batch, results):
+                if not raw:
                     continue
                 lang = detect_lang(url)
-                title, hpath, lead = extract_index_fields(html)
+                is_md = not raw.lstrip().startswith("<")
+                if is_md:
+                    title, hpath, lead = extract_index_fields_markdown(raw)
+                else:
+                    title, hpath, lead = extract_index_fields(raw)
                 headings = ""
                 body_prefix = ""
                 ngrams = ""
-                if lang == "ja-jp":
-                    headings, body_prefix = extract_headings_and_body_prefix(html, body_prefix_len=4000)
+                if lang in ("ja-jp", "zh-cn"):
+                    if is_md:
+                        headings, body_prefix = extract_headings_and_body_prefix_markdown(
+                            raw, body_prefix_len=4000
+                        )
+                    else:
+                        headings, body_prefix = extract_headings_and_body_prefix(
+                            raw, body_prefix_len=4000
+                        )
                     ngrams_source = f"{title}\n{hpath}\n{lead}\n{headings}\n{body_prefix}"
                     ngrams = make_ngrams(ngrams_source)
                 upsert_page(conn, url, lang, title, hpath, lead, headings, body_prefix, ngrams, now)
@@ -217,7 +259,7 @@ async def main() -> None:
                 print(f"[{count}] {url}")
 
                 if depth < CFG.max_depth:
-                    for link in extract_nav_links(url, html):
+                    for link in extract_nav_links(url, raw):
                         if link not in done:
                             queue.append((link, depth + 1))
 

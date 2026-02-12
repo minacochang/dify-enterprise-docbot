@@ -28,8 +28,8 @@
 
 | 項目 | 制約 |
 |------|------|
-| 対象 | enterprise-docs.dify.ai の 3-0-x、ja-jp / en-us のみ |
-| クロール | 最大 800 ページ、depth 8 |
+| 対象 | enterprise-docs.dify.ai の `/versions/` 配下（全バージョン・全言語） |
+| クロール | 最大 2500 ページ、depth 8。llms.txt から URL を動的取得 |
 | compose | 検索結果 or フォールバックの docker-compose.yaml のみ |
 | helm | helm CLI 必須。フォールバックは langgenius/dify-helm |
 

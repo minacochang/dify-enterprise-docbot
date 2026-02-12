@@ -9,13 +9,13 @@ DEFAULT_DB_PATH = os.environ.get("DOCBOT_DB_PATH", "data/index.db")
 @dataclass(frozen=True)
 class Config:
     host: str = "enterprise-docs.dify.ai"
-    base_path: str = "/versions/3-0-x/"
-    langs: tuple[str, ...] = ("ja-jp", "en-us")
+    base_path: str = "/versions/"
+    langs: tuple[str, ...] = ("ja-jp", "en-us", "zh-cn")
     db_path: str = DEFAULT_DB_PATH
 
-    # 対象URL: バージョン3-0-x かつ ja-jp / en-us のみ
+    # 対象URL: /versions/ 配下の全バージョン・全言語
     allow_re: re.Pattern = re.compile(
-        r"^https://enterprise-docs\.dify\.ai/versions/3-0-x/(ja-jp|en-us)/"
+        r"^https://enterprise-docs\.dify\.ai/versions/[^/]+/[^/]+"
     )
 
     # アセット類は除外
@@ -24,14 +24,23 @@ class Config:
         ".zip", ".tar", ".gz", ".pdf"
     )
 
-    # BFSの入口（seed）
+    # BFSの入口（seed）。複数版・複数言語の introduction から辿る
     seed_urls: tuple[str, ...] = (
+        # 3-0-x（メイン）
         "https://enterprise-docs.dify.ai/versions/3-0-x/ja-jp/introduction",
         "https://enterprise-docs.dify.ai/versions/3-0-x/en-us/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-0-x/zh-cn/introduction",
+        # 2-8-x, 3-1-x～3-7-x（部分更新あり）
+        "https://enterprise-docs.dify.ai/versions/2-8-x/zh-cn/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-1-x/zh-cn/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-2-x/zh-cn/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-5-x/zh-cn/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-6-x/zh-cn/introduction",
+        "https://enterprise-docs.dify.ai/versions/3-7-x/zh-cn/introduction",
     )
 
-    # BFS制限（まずは安全側）
-    max_pages: int = 800
+    # BFS制限（versions 配下複数版を拾うため多めに）
+    max_pages: int = 2500
     max_depth: int = 8
     concurrency: int = 10
 

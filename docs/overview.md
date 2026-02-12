@@ -31,9 +31,9 @@ Dify Enterprise ドキュメント（enterprise-docs.dify.ai）を対象にし�
 
 ## 対象ドキュメント
 
-- **URL**: `https://enterprise-docs.dify.ai/versions/3-0-x/`
-- **言語**: ja-jp, en-us のみ
-- **クロール**: seed から BFS、最大 800 ページ、depth 8
+- **URL**: `https://enterprise-docs.dify.ai/versions/` 配下の全バージョン・全言語
+- **取得方法**: llms.txt から URL を動的取得（失敗時は seed_urls で BFS）
+- **クロール**: 最大 2500 ページ、depth 8
 
 ---
 
