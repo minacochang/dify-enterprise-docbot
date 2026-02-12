@@ -1,11 +1,19 @@
-# CLI（docbot.py）の使い方
+# CLI（docbot.cli）の使い方
 
 docbot は検索用 CLI。サブコマンド `search`（省略可）/ `compose` / `helm` がある。デフォルトでサーバー `http://127.0.0.1:8000` へ `/search` を POST する。
+
+## 実行方法
+
+```bash
+python -m docbot.cli [search] <query> [options]
+python -m docbot.cli compose <query> [options]
+python -m docbot.cli helm <query> [options]
+```
 
 ## search（既定）
 
 ```
-./docbot.py "<query>" [--lang ja-jp|en-us] [--limit N] [--base URL] [--json]
+python -m docbot.cli [search] "<query>" [--lang ja-jp|en-us] [--limit N] [--base URL] [--json]
 ```
 
 | オプション | 説明 | デフォルト |
@@ -18,9 +26,9 @@ docbot は検索用 CLI。サブコマンド `search`（省略可）/ `compose` 
 **例**:
 
 ```bash
-./docbot.py "パフォーマンス チューニング" --lang ja-jp
-./docbot.py "Docker Compose" --lang en-us --limit 10
-./docbot.py "timeout" --json
+python -m docbot.cli search "パフォーマンス チューニング" --lang ja-jp
+python -m docbot.cli "Docker Compose" --lang en-us --limit 10
+python -m docbot.cli "timeout" --json
 ```
 
 **出力例**:
@@ -39,7 +47,7 @@ Snippet: Helm チャート内の各サービスのリソース割り当てを調
 docker-compose.yaml の services を表で要約する。
 
 ```
-./docbot.py compose "<query>" [--lang ja-jp|en-us] [--limit N] [--base URL]
+python -m docbot.cli compose "<query>" [--lang ja-jp|en-us] [--limit N] [--base URL]
 ```
 
 - 検索結果から `docker-compose.yaml` を含む URL を探す
@@ -49,7 +57,7 @@ docker-compose.yaml の services を表で要約する。
 **例**:
 
 ```bash
-./docbot.py compose "Docker Compose" --lang ja-jp
+python -m docbot.cli compose "Docker Compose" --lang ja-jp
 ```
 
 **出力例**:
@@ -69,7 +77,7 @@ Source: https://raw.githubusercontent.com/langgenius/dify/main/docker/docker-com
 Helm チャートを取得し、helm template でレンダリングして Deployment/StatefulSet/Service 等を表で要約する。
 
 ```
-./docbot.py helm "<query>" [--lang ja-jp|en-us] [--limit N] [--namespace NS] [--release NAME] [--values PATH] [--set K=V ...] [--base URL]
+python -m docbot.cli helm "<query>" [--lang ja-jp|en-us] [--limit N] [--namespace NS] [--release NAME] [--values PATH] [--set K=V ...] [--base URL]
 ```
 
 | オプション | 説明 | デフォルト |
@@ -85,8 +93,8 @@ Helm チャートを取得し、helm template でレンダリングして Deploy
 **例**:
 
 ```bash
-./docbot.py helm "Dify Helm Chart" --lang en-us
-./docbot.py helm "dify-helm" --namespace my-ns --set api.replicas=2
+python -m docbot.cli helm "Dify Helm Chart" --lang en-us
+python -m docbot.cli helm "dify-helm" --namespace my-ns --set api.replicas=2
 ```
 
 **出力例**:

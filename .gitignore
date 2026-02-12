@@ -8,13 +8,23 @@ __pycache__/
 .Python
 *.egg-info/
 *.egg
+build/
+dist/
+*.egg-info/
 
-# SQLite
+# SQLite（ルート直下および data/）
 *.db
 *.db-shm
 *.db-wal
+data/*.db
+data/*.db-shm
+data/*.db-wal
 
-# IDE
+# data/ 以下（DB 等の生成物。.gitkeep は残す）
+data/*
+!data/.gitkeep
+
+# IDE / OS
 .idea/
 .vscode/
 *.swp

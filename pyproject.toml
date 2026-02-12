@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dify-enterprise-docbot"
+version = "0.1.0"
+description = "Dify Enterprise ドキュメント検索ヘルパー"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "httpx",
+    "pyyaml",
+    "beautifulsoup4",
+    "readability-lxml",
+    "lxml",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

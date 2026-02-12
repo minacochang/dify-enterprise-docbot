@@ -1,5 +1,8 @@
+import os
 import re
 import sqlite3
+
+from docbot.config import CFG
 
 # ja-jp 2段ランキング：1段目の候補数
 CANDIDATE_LIMIT = 80
@@ -118,8 +121,17 @@ def _rescore_ja(row: tuple, query: str) -> float:
     return score
 
 
-def open_db(path: str = "index.db") -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+def _resolve_db_path(path: str | None = None) -> str:
+    """DB パスを解決。path がなければ CFG.db_path。相対パスは cwd 基準"""
+    p = path or CFG.db_path
+    if not os.path.isabs(p):
+        return os.path.join(os.getcwd(), p)
+    return p
+
+
+def open_db(path: str | None = None) -> sqlite3.Connection:
+    resolved = _resolve_db_path(path)
+    conn = sqlite3.connect(resolved)
     conn.execute("PRAGMA foreign_keys=ON;")
     conn.executescript(SCHEMA)
     return conn

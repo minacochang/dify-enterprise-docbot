@@ -2,22 +2,25 @@
 Dify Enterprise docs クロール＆インデックス作成。
 
 スキーマ変更後は DB 再生成が必要:
-  rm -f index.db index.db-shm index.db-wal && python ingest.py
+  rm -f data/index.db data/index.db-shm data/index.db-wal && python -m docbot.ingest
 """
 import asyncio
+import os
 import time
 from collections import deque
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 from lxml import etree
 
-from config import CFG
-from storage import open_db, upsert_page
-from extract import extract_index_fields, extract_headings_and_body_prefix
+from docbot.config import CFG
+from docbot.storage import open_db, upsert_page
+from docbot.extract import extract_index_fields, extract_headings_and_body_prefix
 
 UA = {"User-Agent": "docbot/0.1 (+local)"}
+
 
 def is_allowed(url: str) -> bool:
     if not CFG.allow_re.match(url):
@@ -27,9 +30,11 @@ def is_allowed(url: str) -> bool:
         return False
     return True
 
+
 def detect_lang(url: str) -> str:
     parts = urlparse(url).path.split("/")
     return parts[3] if len(parts) >= 4 else "unknown"
+
 
 async def fetch_text(client: httpx.AsyncClient, url: str) -> str | None:
     try:
@@ -42,6 +47,7 @@ async def fetch_text(client: httpx.AsyncClient, url: str) -> str | None:
         return r.text
     except Exception:
         return None
+
 
 async def try_sitemap(client: httpx.AsyncClient) -> list[str] | None:
     sitemap_url = f"https://{CFG.host}/sitemap.xml"
@@ -75,6 +81,7 @@ async def try_sitemap(client: httpx.AsyncClient) -> list[str] | None:
     urls = [u for u in sub_urls if is_allowed(u)]
     return urls or None
 
+
 def extract_nav_links(base_url: str, html: str) -> list[str]:
     soup = BeautifulSoup(html, "lxml")
     out = []
@@ -90,8 +97,8 @@ def extract_nav_links(base_url: str, html: str) -> list[str]:
         out.append(full_url)
     return out
 
+
 def make_ngrams(text: str, ns=(2, 3), limit=4000) -> str:
-    # 超雑でOK：日本語は空白で区切られないので、連続文字からN-gramを作る
     s = "".join(text.split())
     toks = []
     for n in ns:
@@ -99,14 +106,18 @@ def make_ngrams(text: str, ns=(2, 3), limit=4000) -> str:
             continue
         for i in range(len(s) - n + 1):
             toks.append(s[i:i+n])
-    # でかくなりすぎ防止
     if len(toks) > limit:
         toks = toks[:limit]
     return " ".join(toks)
 
 
 async def main() -> None:
-    conn = open_db("index.db")
+    db_path = CFG.db_path
+    parent = Path(db_path).parent
+    if parent:
+        parent.mkdir(parents=True, exist_ok=True)
+
+    conn = open_db(db_path)
     queue: deque[tuple[str, int]] = deque((u, 0) for u in CFG.seed_urls)
     done: set[str] = set()
     count = 0

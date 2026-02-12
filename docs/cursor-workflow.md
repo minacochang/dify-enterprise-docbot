@@ -13,7 +13,7 @@ AI がドキュメント根拠付きで回答するための運用手順。`.cur
 
 1. リポジトリルートで:
    ```bash
-   ./docbot.py "<検索クエリ>" --lang <lang>
+   python -m docbot.cli "<検索クエリ>" --lang <lang>
    ```
 2. 言語:
    - 日本語質問 → `--lang ja-jp`
@@ -42,7 +42,7 @@ Snippet が薄い場合は 5 件まで増やすか、再検索して補強。
 
 ## 前提
 
-- server 未起動時: `uvicorn server:app --port 8000` で起動
+- server 未起動時: `uvicorn docbot.server:app --port 8000` で起動
 
 ---
 

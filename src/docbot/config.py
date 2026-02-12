@@ -1,11 +1,17 @@
 from dataclasses import dataclass
+import os
 import re
+
+# DB パス（data/ に集約）。環境変数 DOCBOT_DB_PATH で上書き可
+DEFAULT_DB_PATH = os.environ.get("DOCBOT_DB_PATH", "data/index.db")
+
 
 @dataclass(frozen=True)
 class Config:
     host: str = "enterprise-docs.dify.ai"
     base_path: str = "/versions/3-0-x/"
     langs: tuple[str, ...] = ("ja-jp", "en-us")
+    db_path: str = DEFAULT_DB_PATH
 
     # 対象URL: バージョン3-0-x かつ ja-jp / en-us のみ
     allow_re: re.Pattern = re.compile(
@@ -28,5 +34,6 @@ class Config:
     max_pages: int = 800
     max_depth: int = 8
     concurrency: int = 10
+
 
 CFG = Config()

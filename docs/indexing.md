@@ -1,14 +1,14 @@
 # インデックス作成（ingest）
 
-`ingest.py` が enterprise-docs.dify.ai をクロールし、`index.db` に格納する。
+`docbot.ingest` が enterprise-docs.dify.ai をクロールし、`data/index.db` に格納する。
 
 ## 実行方法
 
 ```bash
-python ingest.py
+python -m docbot.ingest
 ```
 
-- seed: `config.py` の `seed_urls`（introduction ページ）
+- seed: `docbot.config` の `seed_urls`（introduction ページ）
 - BFS でリンクを辿り、最大 `max_pages`（800）件まで
 
 ## DB 再生成
@@ -16,15 +16,13 @@ python ingest.py
 スキーマ変更や全再取得が必要な場合:
 
 ```bash
-rm -f index.db index.db-shm index.db-wal
-python ingest.py
+rm -f data/index.db data/index.db-shm data/index.db-wal
+python -m docbot.ingest
 ```
-
-`ingest.py` 先頭の docstring にも同様の手順が記載されている。
 
 ## スキーマ（FTS5）
 
-`storage.py` の `SCHEMA` で定義:
+`docbot.storage` の `SCHEMA` で定義:
 
 - **pages**: url, lang, title, hpath, lead, headings, body_prefix, ngrams, fetched_at
 - **pages_fts**: FTS5 仮想テーブル。`content='pages'` で pages を参照
@@ -41,7 +39,7 @@ FTS5 のクエリは `ORDER BY bm25(pages_fts)` で BM25 スコア順。
 
 ## 対象 URL
 
-`config.py` の `allow_re` で制限:
+`docbot.config` の `allow_re` で制限:
 
 - `https://enterprise-docs.dify.ai/versions/3-0-x/(ja-jp|en-us)/` のみ
 - 画像・ZIP 等は `deny_ext` で除外

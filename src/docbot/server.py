@@ -4,13 +4,16 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from storage import open_db, search_index
-from extract import extract_main_text_with_headings
+from docbot.config import CFG
+from docbot.storage import open_db, search_index
+from docbot.extract import extract_main_text_with_headings
 
 UA = {"User-Agent": "docbot/0.1 (+local)"}
 
 app = FastAPI()
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.db")
+
+# DB パスは CFG.db_path（data/index.db）。cwd 基準の相対パス
+DB_PATH = CFG.db_path if os.path.isabs(CFG.db_path) else os.path.join(os.getcwd(), CFG.db_path)
 
 
 def get_conn():
@@ -22,6 +25,7 @@ class AskReq(BaseModel):
     lang: str | None = None
     topk_pages: int = 6
     max_sections: int = 10
+
 
 class SearchReq(BaseModel):
     query: str
@@ -43,7 +47,6 @@ async def fetch_html(url: str) -> str | None:
 
 
 def pick_sections(sections: list[dict], max_sections: int) -> list[dict]:
-    # 最小：長い順（あとで「質問との関連度」で改善できる）
     return sorted(sections, key=lambda s: len(s["text"]), reverse=True)[:max_sections]
 
 
@@ -88,7 +91,6 @@ async def ask(req: AskReq):
             )
 
     conn.close()
-    # まずはLLM未接続で引用候補を返す（動作確認用）
     return {
         "answer": "（LLM未接続）関連する引用候補です。LLMを繋ぐと、この引用だけを根拠に文章回答します。",
         "citations": contexts[:25],

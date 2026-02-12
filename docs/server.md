@@ -1,17 +1,17 @@
 # サーバー（FastAPI）
 
-`server.py` は FastAPI アプリ。主に `/search` を docbot CLI や外部ツールが利用する。
+`docbot.server` は FastAPI アプリ。主に `/search` を docbot CLI や外部ツールが利用する。
 
 ## 起動
 
 ```bash
-.venv/bin/python -m uvicorn server:app --reload --port 8000
+python -m uvicorn docbot.server:app --reload --port 8000
 ```
 
 または:
 
 ```bash
-uvicorn server:app --port 8000
+uvicorn docbot.server:app --port 8000
 ```
 
 ## エンドポイント
@@ -87,7 +87,7 @@ curl http://127.0.0.1:8000/health
 
 ## DB パス
 
-`server.py` は `index.db` をカレントディレクトリ（`__file__` 基準）から読み込む。`ingest.py` で事前に DB を生成しておく必要がある。
+`docbot.server` は `data/index.db`（`docbot.config.CFG.db_path`）を cwd 基準で読み込む。事前に `python -m docbot.ingest` で DB を生成しておく必要がある。
 
 ---
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""docbot CLI: search / compose / helm"""
 import argparse
 import json
 import shutil
@@ -51,7 +52,7 @@ def _extract_services(data: dict) -> list[dict]:
         image = svc.get("image") or ""
         ports = svc.get("ports") or []
         if isinstance(ports, list):
-            ports = [str(p) for p in ports[:5]]  # 最大5件
+            ports = [str(p) for p in ports[:5]]
         else:
             ports = [str(ports)]
         dep = svc.get("depends_on")
@@ -63,7 +64,7 @@ def _extract_services(data: dict) -> list[dict]:
             dep = str(dep)[:80] if dep else ""
         vols = svc.get("volumes") or []
         if isinstance(vols, list):
-            vols = [str(v) for v in vols[:3]]  # 最大3件
+            vols = [str(v) for v in vols[:3]]
         else:
             vols = [str(vols)]
         rows.append({
@@ -91,7 +92,7 @@ def _format_table(rows: list[dict]) -> str:
 
 
 def run_compose(base: str, query: str, lang: str | None, limit: int) -> int:
-    """compose サブコマンド: 検索 → YAML取得 → 表出力"""
+    """compose サブコマンド"""
     url = base.rstrip("/") + "/search"
     payload = {"query": query, "lang": lang, "limit": limit}
     try:
@@ -138,7 +139,6 @@ def run_compose(base: str, query: str, lang: str | None, limit: int) -> int:
 # --- Helm ---
 
 def _helm_chart_url_from_hits(hits: list) -> str | None:
-    """検索結果から Helm チャートの手がかりURLを探す"""
     clues = ("dify-helm", "helm chart", "values.yaml", ".tgz", "index.yaml")
     for h in hits:
         url = ((h.get("url") or "") + " " + (h.get("title") or "")).lower()
@@ -154,17 +154,14 @@ def _is_tgz_url(url: str) -> bool:
 
 
 def _fetch_tgz(url: str, dest_dir: Path) -> Path | None:
-    """tgz をダウンロードして解凍し、チャートディレクトリを返す"""
     try:
         r = httpx.get(url, timeout=30, follow_redirects=True)
         r.raise_for_status()
         tgz_path = dest_dir / "chart.tgz"
         tgz_path.write_bytes(r.content)
         with tarfile.open(tgz_path, "r:gz") as tf:
-            # 先頭ディレクトリ名で展開（例: dify/）
             members = tf.getmembers()
             tf.extractall(dest_dir, members)
-        # 展開後は dest_dir/dify/ のような構成
         subdirs = [d for d in dest_dir.iterdir() if d.is_dir()]
         return subdirs[0] if subdirs else dest_dir
     except Exception:
@@ -172,7 +169,6 @@ def _fetch_tgz(url: str, dest_dir: Path) -> Path | None:
 
 
 def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Path | None:
-    """index.yaml を取得して最新 tgz をダウンロード・解凍"""
     base = repo_url.rstrip("/")
     index_url = f"{base}/index.yaml"
     try:
@@ -185,7 +181,6 @@ def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Pa
     charts = entries.get(chart_name) or []
     if not charts:
         return None
-    # 最新版を取得（created 順など）
     latest = charts[0]
     urls = latest.get("urls") or []
     if not urls:
@@ -196,19 +191,12 @@ def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Pa
 
 
 def _helm_repo_add_and_pull(repo_name: str, repo_url: str, chart_name: str, dest_dir: Path) -> Path | None:
-    """repo からチャート取得。まず httpx で tgz 直接 DL、失敗時は helm pull"""
     chart_dir = _fetch_chart_from_repo(repo_url, chart_name, dest_dir)
     if chart_dir:
         return chart_dir
     try:
-        subprocess.run(
-            ["helm", "repo", "add", repo_name, repo_url],
-            check=True, capture_output=True, timeout=30
-        )
-        subprocess.run(
-            ["helm", "repo", "update"],
-            check=True, capture_output=True, timeout=60
-        )
+        subprocess.run(["helm", "repo", "add", repo_name, repo_url], check=True, capture_output=True, timeout=30)
+        subprocess.run(["helm", "repo", "update"], check=True, capture_output=True, timeout=60)
         result = subprocess.run(
             ["helm", "pull", f"{repo_name}/{chart_name}", "--untar", "--untardir", str(dest_dir)],
             capture_output=True, timeout=60, text=True
@@ -221,8 +209,6 @@ def _helm_repo_add_and_pull(repo_name: str, repo_url: str, chart_name: str, dest
         return None
 
 
-# Dify チャートは postgresql/externalPostgres が両方 false だと b64enc で失敗するため、
-# 要約用の最小ダミー値をデフォルトで渡す
 _DIFY_HELM_DEFAULT_SET = [
     "postgresql.enabled=true",
     "postgresql.global.postgresql.auth.postgresPassword=placeholder",
@@ -235,7 +221,6 @@ def _run_helm_template(
     chart_dir: Path, release: str, namespace: str,
     values_path: Path | None, set_args: list[str]
 ) -> str | None:
-    """helm template でレンダリング"""
     cmd = ["helm", "template", release, str(chart_dir), "--namespace", namespace]
     if values_path and values_path.exists():
         cmd.extend(["--values", str(values_path)])
@@ -253,7 +238,6 @@ def _run_helm_template(
 
 
 def _extract_workloads(yaml_text: str) -> list[dict]:
-    """Deployment/StatefulSet/DaemonSet/Job/CronJob を抽出"""
     rows = []
     for doc in yaml.safe_load_all(yaml_text):
         if not isinstance(doc, dict):
@@ -268,11 +252,7 @@ def _extract_workloads(yaml_text: str) -> list[dict]:
         pod_spec = template.get("spec") or {}
         containers = pod_spec.get("containers") or []
 
-        replicas = spec.get("replicas")
-        if replicas is not None:
-            replicas = str(replicas)
-        else:
-            replicas = "-"
+        replicas = str(spec.get("replicas")) if spec.get("replicas") is not None else "-"
 
         images = []
         ports = []
@@ -296,23 +276,19 @@ def _extract_workloads(yaml_text: str) -> list[dict]:
                 if isinstance(v, dict) and v.get("name"):
                     vols.append(v["name"])
             res = c.get("resources") or {}
-            req = res.get("requests") or {}
-            lim = res.get("limits") or {}
+            req, lim = res.get("requests") or {}, res.get("limits") or {}
             if req:
                 res_req += f"cpu:{req.get('cpu','-')} mem:{req.get('memory','-')} "
             if lim:
                 res_lim += f"cpu:{lim.get('cpu','-')} mem:{lim.get('memory','-')} "
 
-        # volume 種別（persistentVolumeClaim, configMap, secret, emptyDir など）
         for v in pod_spec.get("volumes") or []:
             if isinstance(v, dict) and v.get("name"):
                 vtype = "pvc" if "persistentVolumeClaim" in v else "cfg" if "configMap" in v else "secret" if "secret" in v else "emptyDir" if "emptyDir" in v else "?"
                 vols.append(f"{v['name']}({vtype})")
 
         rows.append({
-            "kind": kind,
-            "name": name,
-            "replicas": replicas,
+            "kind": kind, "name": name, "replicas": replicas,
             "images": " | ".join(images[:3]) if images else "",
             "ports": " | ".join(ports[:5]) if ports else "",
             "env": ", ".join(env_keys[:5]) if env_keys else "",
@@ -323,7 +299,6 @@ def _extract_workloads(yaml_text: str) -> list[dict]:
 
 
 def _extract_k8s_services(yaml_text: str) -> list[dict]:
-    """Service を抽出"""
     rows = []
     for doc in yaml.safe_load_all(yaml_text):
         if not isinstance(doc, dict) or doc.get("kind") != "Service":
@@ -350,7 +325,6 @@ def _extract_k8s_services(yaml_text: str) -> list[dict]:
 
 
 def _extract_ingresses(yaml_text: str) -> list[dict]:
-    """Ingress を抽出（簡易）"""
     rows = []
     for doc in yaml.safe_load_all(yaml_text):
         if not isinstance(doc, dict) or doc.get("kind") != "Ingress":
@@ -376,7 +350,6 @@ def _format_helm_table(rows: list[dict], headers: list[str], keys: list[str]) ->
 
 
 def _fetch_values_if_url(values_arg: str | None, dest_dir: Path) -> Path | None:
-    """--values が URL ならダウンロードしてパスを返す"""
     if not values_arg:
         return None
     if values_arg.startswith(("http://", "https://")):
@@ -396,7 +369,6 @@ def run_helm(
     base: str, query: str, lang: str | None, limit: int,
     namespace: str, release: str, values_arg: str | None, set_args: list[str]
 ) -> int:
-    """helm サブコマンド: 検索 → チャート取得 → helm template → 表出力"""
     if not shutil.which("helm"):
         print("helm が必要です。https://helm.sh でインストールしてください。")
         return 1
@@ -426,8 +398,7 @@ def run_helm(
             source_msg = chart_url
         if chart_dir is None and chart_url and ("index.yaml" in chart_url or "dify-helm" in chart_url):
             repo_url = chart_url.split("/index.yaml")[0] if "index.yaml" in chart_url else DIFY_HELM_REPO
-            repo_name = "dify-helm"
-            chart_dir = _helm_repo_add_and_pull(repo_name, repo_url, DIFY_HELM_CHART, tmp_path)
+            chart_dir = _helm_repo_add_and_pull("dify-helm", repo_url, DIFY_HELM_CHART, tmp_path)
             source_msg = f"{repo_url} (chart: {DIFY_HELM_CHART})"
         if chart_dir is None:
             chart_dir = _helm_repo_add_and_pull("dify-helm", DIFY_HELM_REPO, DIFY_HELM_CHART, tmp_path)
@@ -449,21 +420,15 @@ def run_helm(
         print(f"Source: {source_msg}\n")
         if workloads:
             print("## Workloads (Deployment / StatefulSet / DaemonSet / Job / CronJob)\n")
-            w_headers = ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"]
-            w_keys = ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"]
-            print(_format_helm_table(workloads, w_headers, w_keys))
+            print(_format_helm_table(workloads, ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"], ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"]))
             print()
         if services:
             print("## Services\n")
-            s_headers = ["name", "type", "ports", "selector"]
-            s_keys = ["name", "type", "ports", "selector"]
-            print(_format_helm_table(services, s_headers, s_keys))
+            print(_format_helm_table(services, ["name", "type", "ports", "selector"], ["name", "type", "ports", "selector"]))
             print()
         if ingresses:
             print("## Ingresses\n")
-            i_headers = ["name", "hosts"]
-            i_keys = ["name", "hosts"]
-            print(_format_helm_table(ingresses, i_headers, i_keys))
+            print(_format_helm_table(ingresses, ["name", "hosts"], ["name", "hosts"]))
 
         if not workloads and not services and not ingresses:
             print("取得できませんでした（レンダリング結果に該当リソースなし）")
@@ -472,10 +437,8 @@ def run_helm(
 
 
 def run_search(base: str, query: str, lang: str | None, limit: int, as_json: bool) -> int:
-    """通常の検索"""
     url = base.rstrip("/") + "/search"
     payload = {"query": query, "lang": lang, "limit": limit}
-
     try:
         r = httpx.post(url, json=payload, timeout=10)
         r.raise_for_status()
@@ -493,13 +456,12 @@ def run_search(base: str, query: str, lang: str | None, limit: int, as_json: boo
         print("0件。検索対象フィールド/言語を確認")
         return 0
 
-    for i, h in enumerate(hits, 1):
+    for h in hits:
         title = (h.get("title") or "").strip()
         url = h.get("url") or ""
         score = h.get("score")
         snippet = (h.get("lead") or "").replace("\n", " ").strip()
         snippet = snippet[:280] + ("…" if len(snippet) > 280 else "")
-
         print(f"Title: {title}")
         print(f"URL: {url}")
         if score is not None:
@@ -511,8 +473,9 @@ def run_search(base: str, query: str, lang: str | None, limit: int, as_json: boo
     return 0
 
 
-def main():
+def main() -> int:
     argv = sys.argv[1:]
+
     if argv and argv[0] == "compose":
         p = argparse.ArgumentParser(prog="docbot compose", description="docker-compose services table")
         p.add_argument("query", nargs="*", help="search query")
@@ -535,10 +498,10 @@ def main():
         p.add_argument("--set", dest="set_args", action="append", default=[], metavar="KEY=VAL")
         args = p.parse_args(argv[1:])
         q = " ".join(args.query).strip() or "Dify Helm Chart"
-        return run_helm(
-            args.base, q, args.lang, args.limit,
-            args.namespace, args.release, args.values_path, args.set_args or []
-        )
+        return run_helm(args.base, q, args.lang, args.limit, args.namespace, args.release, args.values_path, args.set_args or [])
+
+    if argv and argv[0] == "search":
+        argv = argv[1:]
 
     p = argparse.ArgumentParser(prog="docbot", description="Local doc search helper for Dify Enterprise docs")
     p.add_argument("query", nargs="*", help="search query words")
@@ -550,7 +513,7 @@ def main():
 
     q = " ".join(args.query).strip()
     if not q:
-        print("Usage: docbot <query> [--lang ja-jp|en-us] [--limit N]", file=sys.stderr)
+        print("Usage: docbot [search] <query> [--lang ja-jp|en-us] [--limit N]", file=sys.stderr)
         print("       docbot compose <query> [--lang ja-jp|en-us]", file=sys.stderr)
         print("       docbot helm <query> [--lang ja-jp|en-us] [--namespace NS] [--release NAME] [--values PATH] [--set K=V]", file=sys.stderr)
         return 2

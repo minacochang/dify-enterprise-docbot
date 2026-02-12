@@ -14,7 +14,7 @@ alwaysApply: false
 
 ## 検索手順（必須）
 1. リポジトリルートで以下を実行:
-   ./docbot.py "<検索クエリ>" --lang <lang>
+   python -m docbot.cli "<検索クエリ>" --lang <lang>
 
 2. 言語選択:
    - 日本語質問 → --lang ja-jp
@@ -47,4 +47,4 @@ alwaysApply: false
 - 0件の場合は必ず明記し「検索対象フィールド/言語/表記ゆれ」を確認させる
 
 ## 前提
-- server 未起動時は `uvicorn server:app --port 8000` で起動する
+- server 未起動時は `uvicorn docbot.server:app --port 8000` で起動する
