@@ -1,6 +1,6 @@
 # dify-enterprise-docbot
 
-Dify Enterprise 公式ドキュメント（enterprise-docs.dify.ai）のローカル検索ヘルパー。CLI と FastAPI サーバーで高速に検索し、Docker Compose / Helm 構成の要約も行える。
+Dify Enterprise 公式ドキュメント（enterprise-docs.dify.ai）のローカル検索ヘルパー。CLI と FastAPI サーバーで高速に検索し、Docker Compose / Helm 構成の要約も行える。オープンソースのローカルファーストツール。
 
 ## Who is this for?
 - People operating Dify Enterprise in production
@@ -83,3 +83,7 @@ python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮�
 | [docs/design-decisions.md](docs/design-decisions.md) | SQLite/N-gram、Vector DB なしの理由とトレードオフ |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 0 件・lang 違い・DB 作り直し・helm template 失敗など |
 | [docs/version-upgrade.md](docs/version-upgrade.md) | バージョンアップ時のチェックリスト |
+
+## License
+
+MIT
