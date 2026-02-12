@@ -10,7 +10,7 @@ Dify Enterprise 公式ドキュメント（enterprise-docs.dify.ai）のロー�
 
 ## Cursor 用プロンプト
 
-**ここコピペしてください** → [docs/cursor-agent-prompts.md](docs/cursor-agent-prompts.md)
+**ここの内容をコピペして使ってみてください** → [docs/cursor-agent-prompts.md](docs/cursor-agent-prompts.md)
 
 Dify Enterprise のドキュメント検索・compose・helm・upgrade を Cursor Agent に任せたいときにそのまま使えるプロンプト例集。  
 「docbot の検索結果を根拠にして」と書くと Agent が docbot 出力を参照しやすく精度が上がる。
