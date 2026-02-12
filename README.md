@@ -8,6 +8,13 @@ Dify Enterprise 公式ドキュメント（enterprise-docs.dify.ai）のロー�
 - Teams wanting deterministic, debuggable AI-assisted workflows
 - Cursor users who want a local, structure-first doc assistant
 
+## Cursor 用プロンプト
+
+**ここコピペしてください** → [docs/cursor-agent-prompts.md](docs/cursor-agent-prompts.md)
+
+Dify Enterprise のドキュメント検索・compose・helm・upgrade を Cursor Agent に任せたいときにそのまま使えるプロンプト例集。  
+「docbot の検索結果を根拠にして」と書くと Agent が docbot 出力を参照しやすく精度が上がる。
+
 ## 主な特徴
 
 - SQLite FTS5 による全文検索
