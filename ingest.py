@@ -1,3 +1,9 @@
+"""
+Dify Enterprise docs クロール＆インデックス作成。
+
+スキーマ変更後は DB 再生成が必要:
+  rm -f index.db index.db-shm index.db-wal && python ingest.py
+"""
 import asyncio
 import time
 from collections import deque
@@ -84,6 +90,20 @@ def extract_nav_links(base_url: str, html: str) -> list[str]:
         out.append(full_url)
     return out
 
+def make_ngrams(text: str, ns=(2, 3), limit=4000) -> str:
+    # 超雑でOK：日本語は空白で区切られないので、連続文字からN-gramを作る
+    s = "".join(text.split())
+    toks = []
+    for n in ns:
+        if len(s) < n:
+            continue
+        for i in range(len(s) - n + 1):
+            toks.append(s[i:i+n])
+    # でかくなりすぎ防止
+    if len(toks) > limit:
+        toks = toks[:limit]
+    return " ".join(toks)
+
 
 async def main() -> None:
     conn = open_db("index.db")
@@ -113,7 +133,11 @@ async def main() -> None:
                     continue
                 lang = detect_lang(url)
                 title, hpath, lead = extract_index_fields(html)
-                upsert_page(conn, url, lang, title, hpath, lead, now)
+                ngrams = ""
+                if lang == "ja-jp":
+                    base_text = f"{title}\n{hpath}\n{lead}"
+                    ngrams = make_ngrams(base_text)
+                upsert_page(conn, url, lang, title, hpath, lead, ngrams, now)
                 count += 1
                 print(f"[{count}] {url}")
 
