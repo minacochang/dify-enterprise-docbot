@@ -1,5 +1,6 @@
 fastapi
 httpx
+pyyaml
 beautifulsoup4
 readability-lxml
 lxml
