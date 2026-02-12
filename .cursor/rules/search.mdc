@@ -1,14 +1,10 @@
 ---
-description: ドキュメント参照時はローカル検索を実行して根拠を示す
+description: ドキュメント参照時は docbot を実行して根拠を示す
 alwaysApply: false
 ---
 
-以後、ドキュメント参照が必要な質問は、回答前に必ずローカル検索を実行して根拠を出してください。
+doc-search.mdc を参照。要約:
+- 仕様/手順/設定などの質問 → 回答前に docbot 実行必須
+- `./docbot.py "<query>" --lang ja-jp|en-us`
+- 出力の根拠（Sources）を貼ってから結論・手順を書く
 
-手順:
-1) もし server が起動していなければ起動:
-   uvicorn server:app --port 8000
-2) 次に docbot を実行:
-   ./docbot.py "<検索クエリ>" --lang ja-jp
-3) 出力の上位5件をそのまま貼り付ける（title / path(or url) / snippet / score）
-4) その結果だけを根拠に回答を書く。ヒット0件なら0件と明記し、別クエリを2回まで試す。

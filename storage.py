@@ -155,13 +155,25 @@ def upsert_page(
     conn.commit()
 
 
+def _is_anchor_noise_en(row: tuple, query: str) -> bool:
+    """en-us: URLアンカー #<query> だけで一致、本文に無い → ノイズ"""
+    url, title, lead = row[0], row[2], row[4]
+    q = query.lower().strip()
+    url_l = (url or "").lower()
+    title_l = (title or "").lower()
+    lead_l = (lead or "").lower()
+    anchor_match = f"#{q}" in url_l or url_l.endswith("#" + q.replace(" ", "-"))
+    has_content = q in title_l or q in lead_l
+    return anchor_match and not has_content
+
+
 def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, limit: int = 20) -> list[dict]:
     fts_query = query
     if lang == "ja-jp":
         fts_query = _query_to_ngrams_or(query)
         fetch_limit = CANDIDATE_LIMIT
     else:
-        fetch_limit = limit
+        fetch_limit = max(limit, 80) if lang == "en-us" else limit
 
     if lang:
         rows = conn.execute(
@@ -185,11 +197,18 @@ def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, 
     if lang == "ja-jp" and rows:
         scored = [(r, _rescore_ja(r, query)) for r in rows]
         scored.sort(key=lambda x: x[1], reverse=True)
-        rows = [r for r, _ in scored[:limit]]
+        cut = scored[:limit]
+        return [
+            {"url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4], "score": s}
+            for r, s in cut
+        ]
+    if lang == "en-us" and rows:
+        # アンカーのみノイズを後ろに寄せる、他は bm25 順維持
+        rows = sorted(rows, key=lambda r: (_is_anchor_noise_en(r, query), 0))[:limit]
     elif lang and len(rows) > limit:
         rows = rows[:limit]
 
     return [
-        {"url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4]}
+        {"url": r[0], "lang": r[1], "title": r[2], "hpath": r[3], "lead": r[4], "score": None}
         for r in rows
     ]

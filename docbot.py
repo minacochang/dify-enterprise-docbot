@@ -10,7 +10,7 @@ def main():
     p = argparse.ArgumentParser(prog="docbot", description="Local doc search helper for Dify Enterprise docs")
     p.add_argument("query", nargs="*", help="search query words")
     p.add_argument("--lang", choices=["ja-jp", "en-us"], default=None, help="language filter")
-    p.add_argument("--limit", type=int, default=10, help="max hits")
+    p.add_argument("--limit", type=int, default=5, help="max hits")
     p.add_argument("--base", default=DEFAULT_BASE, help="API base url (default: http://127.0.0.1:8000)")
     p.add_argument("--json", action="store_true", help="print raw json")
     args = p.parse_args()
@@ -37,21 +37,23 @@ def main():
 
     hits = data.get("hits") or []
     if not hits:
-        print("(no hits)")
+        print("0件。検索対象フィールド/言語を確認")
         return 0
 
-    # 見やすい表示（Cursorでコピペしやすい）
+    # Cursorがそのまま貼れる形式: Title, URL, Score, Snippet
     for i, h in enumerate(hits, 1):
         title = (h.get("title") or "").strip()
-        lang = h.get("lang")
-        url = h.get("url")
-        lead = (h.get("lead") or "").strip()
-        if len(lead) > 140:
-            lead = lead[:140] + "…"
-        print(f"[{i}] ({lang}) {title}")
-        print(f"    {url}")
-        if lead:
-            print(f"    {lead}")
+        url = h.get("url") or ""
+        score = h.get("score")
+        snippet = (h.get("lead") or "").replace("\n", " ").strip()
+        snippet = snippet[:280] + ("…" if len(snippet) > 280 else "")
+
+        print(f"Title: {title}")
+        print(f"URL: {url}")
+        if score is not None:
+            print(f"Score: {score:.1f}")
+        if snippet:
+            print(f"Snippet: {snippet}")
         print()
 
     return 0
