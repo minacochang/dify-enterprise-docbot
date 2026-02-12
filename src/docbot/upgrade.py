@@ -212,8 +212,9 @@ def format_upgrade_markdown(
     path: list[str],
     hop_bullets: dict[tuple[str, str], list[str]],
     hop_sources: dict[tuple[str, str], list[str]],
+    hop_values_diff: dict[tuple[str, str], dict] | None = None,
 ) -> str:
-    """Markdown 出力を生成"""
+    """Markdown 出力を生成。hop_values_diff があれば各 step の values.yaml 修正を追加"""
     lines = []
     lines.append("Upgrade path:")
     lines.append(" → ".join(path))
@@ -230,6 +231,58 @@ def format_upgrade_markdown(
         else:
             lines.append("- (release notes を確認してください)")
         lines.append("")
+
+        diff = (hop_values_diff or {}).get(hop)
+        if diff and "error" not in diff:
+            s = diff.get("summary") or {}
+            lines.append("### values.yaml 修正")
+            lines.append("")
+            if s.get("added"):
+                lines.append(f"- **追加** ({s['added']}件):")
+                for e in (diff.get("added") or [])[:15]:
+                    path_k = e.get("path", "?")
+                    lines.append(f"  - `{path_k}`")
+                if len(diff.get("added") or []) > 15:
+                    lines.append(f"  - ... 他 {s['added'] - 15} 件")
+                lines.append("")
+            if s.get("removed"):
+                lines.append(f"- **削除** ({s['removed']}件):")
+                for e in (diff.get("removed") or [])[:15]:
+                    path_k = e.get("path", "?")
+                    lines.append(f"  - `{path_k}`")
+                if len(diff.get("removed") or []) > 15:
+                    lines.append(f"  - ... 他 {s['removed'] - 15} 件")
+                lines.append("")
+            if s.get("type_changed"):
+                lines.append(f"- **型変更** ({s['type_changed']}件):")
+                for e in (diff.get("type_changed") or [])[:10]:
+                    path_k = e.get("path", "?")
+                    ft, tt = e.get("from_type", ""), e.get("to_type", "")
+                    lines.append(f"  - `{path_k}` ({ft} → {tt})")
+                if len(diff.get("type_changed") or []) > 10:
+                    lines.append(f"  - ... 他 {s['type_changed'] - 10} 件")
+                lines.append("")
+            if s.get("default_changed"):
+                lines.append(f"- **デフォルト値変更** ({s['default_changed']}件):")
+                for e in (diff.get("default_changed") or [])[:10]:
+                    path_k = e.get("path", "?")
+                    lines.append(f"  - `{path_k}`")
+                if len(diff.get("default_changed") or []) > 10:
+                    lines.append(f"  - ... 他 {s['default_changed'] - 10} 件")
+                lines.append("")
+            if s.get("user_impacts"):
+                lines.append(f"- **運用影響** ({s['user_impacts']}件):")
+                for e in (diff.get("user_impacts") or []):
+                    kind = e.get("kind", "?")
+                    path_k = e.get("path", "?")
+                    lines.append(f"  - `{path_k}` [{kind}]")
+                lines.append("")
+        elif diff and "error" in diff:
+            lines.append("### values.yaml 修正")
+            lines.append("")
+            lines.append(f"- (取得失敗: {diff['error']})")
+            lines.append("")
+
         lines.append("Sources:")
         for src in hop_sources.get(hop, []):
             lines.append(f"- {src}")
@@ -238,9 +291,37 @@ def format_upgrade_markdown(
     return "\n".join(lines)
 
 
-def run_upgrade(from_ver: str, to_ver: str, lang: str = "en-us") -> int:
+DIFY_HELM_CHART = "dify/dify"
+
+
+def _fetch_hop_values_diff(
+    a_ver: str, b_ver: str, user_yaml: str | None,
+) -> dict | None:
+    """各 hop (a→b) の values-diff を取得"""
+    from docbot.values_diff import (
+        run_helm_show_values,
+        build_values_diff_result,
+    )
+
+    from_yaml, err = run_helm_show_values(DIFY_HELM_CHART, a_ver)
+    if err:
+        return {"error": err}
+    to_yaml, err = run_helm_show_values(DIFY_HELM_CHART, b_ver)
+    if err:
+        return {"error": err}
+    return build_values_diff_result(
+        DIFY_HELM_CHART, a_ver, DIFY_HELM_CHART, b_ver,
+        from_yaml, to_yaml, user_yaml, "set",
+    )
+
+
+def run_upgrade(
+    from_ver: str, to_ver: str, lang: str = "en-us",
+    mode: str | None = None, values_path: str | None = None,
+) -> int:
     """
     upgrade 処理のメイン。storage を直接利用。
+    mode=helm のときは各 hop で values-diff を実行し、values.yaml 修正を出力に含める。
     """
     conn = open_db()
 
@@ -279,6 +360,22 @@ def run_upgrade(from_ver: str, to_ver: str, lang: str = "en-us") -> int:
 
     conn.close()
 
-    md = format_upgrade_markdown(path, hop_bullets, hop_sources)
+    hop_values_diff = None
+    if mode == "helm":
+        from pathlib import Path
+        user_yaml = None
+        if values_path:
+            p = Path(values_path)
+            if p.exists():
+                try:
+                    user_yaml = p.read_text()
+                except OSError:
+                    pass
+        hop_values_diff = {}
+        for i in range(len(path) - 1):
+            a, b = path[i], path[i + 1]
+            hop_values_diff[(a, b)] = _fetch_hop_values_diff(a, b, user_yaml)
+
+    md = format_upgrade_markdown(path, hop_bullets, hop_sources, hop_values_diff)
     print(md)
     return 0

@@ -9,6 +9,7 @@ description = "Dify Enterprise ドキュメント検索ヘルパー"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "certifi",
     "fastapi",
     "httpx",
     "pyyaml",

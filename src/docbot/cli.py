@@ -565,10 +565,16 @@ def run_stats(db_path: str | None = None) -> int:
     return 0
 
 
-def run_upgrade(from_ver: str, to_ver: str, lang: str = "en-us") -> int:
+def run_upgrade(
+    from_ver: str, to_ver: str, lang: str = "en-us",
+    mode: str | None = None, values_path: str | None = None,
+) -> int:
     """Non-Skippable を考慮したアップグレード経路を表示（appVersion 基準）"""
+    if mode == "helm" and not shutil.which("helm"):
+        print("helm が必要です。https://helm.sh でインストールしてください。")
+        return 1
     from docbot.upgrade import run_upgrade as _run_upgrade
-    return _run_upgrade(from_ver, to_ver, lang)
+    return _run_upgrade(from_ver, to_ver, lang, mode, values_path)
 
 
 def run_search(base: str, query: str, lang: str | None, limit: int, as_json: bool) -> int:
@@ -652,10 +658,11 @@ def main() -> int:
         p = argparse.ArgumentParser(prog="docbot upgrade", description="Non-Skippable を考慮したアップグレード経路")
         p.add_argument("--from", dest="from_ver", required=True, metavar="X.Y.Z")
         p.add_argument("--to", dest="to_ver", required=True, metavar="X.Y.Z")
-        p.add_argument("--values", default=None, help="values.yaml パス（オプション）")
+        p.add_argument("--values", dest="values_path", default=None, help="values.yaml パス（--mode helm 時に user_impacts 算出に使用）")
+        p.add_argument("--mode", choices=["helm"], default=None, help="helm: 各 step に values-diff を追加")
         p.add_argument("--lang", choices=["ja-jp", "en-us"], default="en-us")
         args = p.parse_args(argv[1:])
-        return run_upgrade(args.from_ver, args.to_ver, args.lang)
+        return run_upgrade(args.from_ver, args.to_ver, args.lang, args.mode, args.values_path)
 
     if argv and argv[0] == "search":
         argv = argv[1:]
@@ -673,7 +680,7 @@ def main() -> int:
         print("Usage: docbot [search] <query> [--lang ja-jp|en-us] [--limit N]", file=sys.stderr)
         print("       docbot compose <query> [--lang ja-jp|en-us]", file=sys.stderr)
         print("       docbot helm [query] [--chart PATH] [--chart-version X.Y.Z] [--values PATH] [--set K=V] ...", file=sys.stderr)
-        print("       docbot upgrade --from X.Y.Z --to X.Y.Z", file=sys.stderr)
+        print("       docbot upgrade --from X.Y.Z --to X.Y.Z [--mode helm] [--values PATH]", file=sys.stderr)
         print("       docbot stats  # DB サイズ・ページ数確認", file=sys.stderr)
         return 2
 
