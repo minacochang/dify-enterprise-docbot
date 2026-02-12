@@ -35,5 +35,9 @@ class Config:
     max_depth: int = 8
     concurrency: int = 10
 
+    # dify-helm release notes（追加 ingest 用）
+    helm_release_base: str = "https://langgenius.github.io/dify-helm"
+    helm_release_seed: str = "https://langgenius.github.io/dify-helm/"
+
 
 CFG = Config()

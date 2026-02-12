@@ -43,7 +43,15 @@ curl -X POST http://127.0.0.1:8000/search -H "Content-Type: application/json" -d
 python -m docbot.cli search "パフォーマンス" --lang ja-jp   # search
 python -m docbot.cli compose "Docker Compose" --lang ja-jp  # compose
 python -m docbot.cli helm "Dify Helm Chart" --lang en-us    # helm（要 helm CLI）
+python -m docbot.cli helm "Dify Helm Chart" --chart-version 3.7.5 --values ./values.yaml  # バージョン固定
+python -m docbot.cli helm --chart ./dify-3.7.4.tgz  # ローカル chart を直接指定
+python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5  # Non-Skippable を考慮したアップグレード経路
 ```
+
+### 検索対象
+
+- Enterprise docs（enterprise-docs.dify.ai）
+- dify-helm release notes（https://langgenius.github.io/dify-helm/）
 
 ## ドキュメント
 

@@ -58,6 +58,55 @@ def extract_headings_and_body_prefix(html: str, body_prefix_len: int = 4000) -> 
     return headings, body_prefix
 
 
+def extract_index_fields_markdown(md: str) -> tuple[str, str, str]:
+    """
+    Markdown から索引用フィールドを抽出（Helm release notes 用）
+    """
+    lines = md.split("\n")
+    title = ""
+    headings_parts = []
+    lead_parts = []
+
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("# "):
+            title = s.lstrip("# ").strip()[:200]
+        elif s.startswith("## ") or s.startswith("### "):
+            h = s.lstrip("# ").strip()
+            if h and len(headings_parts) < 60:
+                headings_parts.append(h)
+        elif len(lead_parts) < 3 and len(" ".join(lead_parts)) < 600:
+            lead_parts.append(s[:300])
+
+    hpath = " | ".join(headings_parts[:60])
+    lead = " ".join(lead_parts)[:600]
+    return title, hpath, lead
+
+
+def extract_headings_and_body_prefix_markdown(md: str, body_prefix_len: int = 4000) -> tuple[str, str]:
+    """Markdown から headings と body_prefix を抽出"""
+    lines = md.split("\n")
+    headings_parts = []
+    body_parts = []
+    total = 0
+
+    for line in lines:
+        s = line.strip()
+        if s.startswith("## ") or s.startswith("### "):
+            h = s.lstrip("# ").strip()
+            if h and len(headings_parts) < 60:
+                headings_parts.append(h)
+        elif s and not s.startswith("#") and total < body_prefix_len:
+            body_parts.append(s)
+            total += len(s) + 1
+
+    headings = " | ".join(headings_parts[:60])
+    body_prefix = " ".join(body_parts)[:body_prefix_len]
+    return headings, body_prefix
+
+
 def extract_main_text_with_headings(html: str) -> list[dict]:
     """
     QA用：見出し単位で本文をセクション化

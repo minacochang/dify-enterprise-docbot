@@ -179,8 +179,12 @@ def _is_anchor_noise_en(row: tuple, query: str) -> bool:
     return anchor_match and not has_content
 
 
+def _sanitize_fts_query(q: str) -> str:
+    """FTS5 でエラーになる文字を置換（. は句読点扱いで syntax error になりうる）"""
+    return q.replace(".", " ").replace(":", " ")
+
 def search_index(conn: sqlite3.Connection, query: str, lang: str | None = None, limit: int = 20) -> list[dict]:
-    fts_query = query
+    fts_query = _sanitize_fts_query(query)
     if lang == "ja-jp":
         fts_query = _query_to_ngrams_or(query)
         fetch_limit = CANDIDATE_LIMIT

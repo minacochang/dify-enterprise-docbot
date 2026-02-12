@@ -1,6 +1,6 @@
 # インデックス作成（ingest）
 
-`docbot.ingest` が enterprise-docs.dify.ai をクロールし、`data/index.db` に格納する。
+`docbot.ingest` が enterprise-docs.dify.ai をクロールし、`data/index.db` に格納する。あわせて **dify-helm release notes**（https://langgenius.github.io/dify-helm/）の `_sidebar.md` と `/pages/*.md` も取得し、検索対象に追加する。
 
 ## 実行方法
 

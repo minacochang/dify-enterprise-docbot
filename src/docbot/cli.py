@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -168,7 +169,9 @@ def _fetch_tgz(url: str, dest_dir: Path) -> Path | None:
         return None
 
 
-def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Path | None:
+def _fetch_chart_from_repo(
+    repo_url: str, chart_name: str, dest_dir: Path, version: str | None = None
+) -> Path | None:
     base = repo_url.rstrip("/")
     index_url = f"{base}/index.yaml"
     try:
@@ -181,8 +184,17 @@ def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Pa
     charts = entries.get(chart_name) or []
     if not charts:
         return None
-    latest = charts[0]
-    urls = latest.get("urls") or []
+    target = None
+    if version:
+        for entry in charts:
+            if str(entry.get("version", "")) == version:
+                target = entry
+                break
+        if target is None:
+            return None
+    else:
+        target = charts[0]
+    urls = target.get("urls") or []
     if not urls:
         return None
     tgz_name = urls[0] if isinstance(urls[0], str) else urls[0].get("url", "")
@@ -190,17 +202,19 @@ def _fetch_chart_from_repo(repo_url: str, chart_name: str, dest_dir: Path) -> Pa
     return _fetch_tgz(chart_url, dest_dir)
 
 
-def _helm_repo_add_and_pull(repo_name: str, repo_url: str, chart_name: str, dest_dir: Path) -> Path | None:
-    chart_dir = _fetch_chart_from_repo(repo_url, chart_name, dest_dir)
+def _helm_repo_add_and_pull(
+    repo_name: str, repo_url: str, chart_name: str, dest_dir: Path, version: str | None = None
+) -> Path | None:
+    chart_dir = _fetch_chart_from_repo(repo_url, chart_name, dest_dir, version)
     if chart_dir:
         return chart_dir
     try:
         subprocess.run(["helm", "repo", "add", repo_name, repo_url], check=True, capture_output=True, timeout=30)
         subprocess.run(["helm", "repo", "update"], check=True, capture_output=True, timeout=60)
-        result = subprocess.run(
-            ["helm", "pull", f"{repo_name}/{chart_name}", "--untar", "--untardir", str(dest_dir)],
-            capture_output=True, timeout=60, text=True
-        )
+        cmd = ["helm", "pull", f"{repo_name}/{chart_name}", "--untar", "--untardir", str(dest_dir)]
+        if version:
+            cmd.extend(["--version", version])
+        result = subprocess.run(cmd, capture_output=True, timeout=60, text=True)
         if result.returncode != 0:
             return None
         subdirs = [d for d in dest_dir.iterdir() if d.is_dir()]
@@ -349,6 +363,61 @@ def _format_helm_table(rows: list[dict], headers: list[str], keys: list[str]) ->
     return "\n".join(lines)
 
 
+def _read_chart_metadata(chart_dir: Path) -> dict:
+    """Chart.yaml から version / appVersion / name を取得"""
+    meta = {"name": "", "version": "", "appVersion": ""}
+    chart_yaml = chart_dir / "Chart.yaml"
+    if not chart_yaml.exists():
+        return meta
+    try:
+        data = yaml.safe_load(chart_yaml.read_text())
+        if data:
+            meta["name"] = str(data.get("name") or "")
+            meta["version"] = str(data.get("version") or "")
+            meta["appVersion"] = str(data.get("appVersion") or "")
+    except Exception:
+        pass
+    return meta
+
+
+def _resolve_local_chart(chart_path: str, dest_dir: Path) -> Path | None:
+    """ローカル .tgz または展開済みディレクトリを解決して chart ディレクトリを返す"""
+    p = Path(chart_path).resolve()
+    if not p.exists():
+        return None
+    if p.is_dir():
+        if (p / "Chart.yaml").exists():
+            return p
+        return None
+    if p.suffix == ".tgz" or str(p).endswith(".tgz"):
+        try:
+            with tarfile.open(p, "r:gz") as tf:
+                tf.extractall(dest_dir)
+            subdirs = [d for d in dest_dir.iterdir() if d.is_dir()]
+            for d in subdirs:
+                if (d / "Chart.yaml").exists():
+                    return d
+            return subdirs[0] if subdirs else dest_dir
+        except Exception:
+            return None
+    return None
+
+
+def _format_helm_metadata(
+    chart_name: str, chart_version: str, app_version: str,
+    values_source: str | None, source: str
+) -> str:
+    rendered_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = [
+        f"- **Chart**: {chart_name} {chart_version}" if chart_version else f"- **Chart**: {chart_name}",
+        f"- **AppVersion**: {app_version}" if app_version else "- **AppVersion**: -",
+        f"- **Values**: {values_source}" if values_source else "- **Values**: -",
+        f"- **RenderedAt**: {rendered_at}",
+        f"- **Source**: {source}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _fetch_values_if_url(values_arg: str | None, dest_dir: Path) -> Path | None:
     if not values_arg:
         return None
@@ -367,22 +436,12 @@ def _fetch_values_if_url(values_arg: str | None, dest_dir: Path) -> Path | None:
 
 def run_helm(
     base: str, query: str, lang: str | None, limit: int,
-    namespace: str, release: str, values_arg: str | None, set_args: list[str]
+    namespace: str, release: str, values_arg: str | None, set_args: list[str],
+    chart_path: str | None = None, chart_version: str | None = None,
 ) -> int:
     if not shutil.which("helm"):
         print("helm が必要です。https://helm.sh でインストールしてください。")
         return 1
-
-    url = base.rstrip("/") + "/search"
-    payload = {"query": query, "lang": lang, "limit": limit}
-    hits = []
-    try:
-        r = httpx.post(url, json=payload, timeout=10)
-        r.raise_for_status()
-        hits = (r.json()).get("hits") or []
-    except Exception as e:
-        print(f"Note: search failed ({e}), using fallback chart.", file=sys.stderr)
-    chart_url = _helm_chart_url_from_hits(hits)
 
     with tempfile.TemporaryDirectory(prefix="docbot-helm-") as tmp:
         tmp_path = Path(tmp)
@@ -393,20 +452,54 @@ def run_helm(
         chart_dir: Path | None = None
         source_msg = ""
 
-        if chart_url and _is_tgz_url(chart_url):
-            chart_dir = _fetch_tgz(chart_url, tmp_path)
-            source_msg = chart_url
-        if chart_dir is None and chart_url and ("index.yaml" in chart_url or "dify-helm" in chart_url):
-            repo_url = chart_url.split("/index.yaml")[0] if "index.yaml" in chart_url else DIFY_HELM_REPO
-            chart_dir = _helm_repo_add_and_pull("dify-helm", repo_url, DIFY_HELM_CHART, tmp_path)
-            source_msg = f"{repo_url} (chart: {DIFY_HELM_CHART})"
+        if chart_path:
+            chart_dir = _resolve_local_chart(chart_path, tmp_path)
+            if chart_dir:
+                source_msg = str(Path(chart_path).resolve())
+            if not chart_dir:
+                print(f"ERROR: --chart で指定したパスが無効です: {chart_path}")
+                return 1
+
         if chart_dir is None:
-            chart_dir = _helm_repo_add_and_pull("dify-helm", DIFY_HELM_REPO, DIFY_HELM_CHART, tmp_path)
-            source_msg = f"{DIFY_HELM_REPO} (chart: {DIFY_HELM_CHART})"
+            url = base.rstrip("/") + "/search"
+            payload = {"query": query, "lang": lang, "limit": limit}
+            hits = []
+            try:
+                r = httpx.post(url, json=payload, timeout=10)
+                r.raise_for_status()
+                hits = (r.json()).get("hits") or []
+            except Exception as e:
+                print(f"Note: search failed ({e}), using fallback chart.", file=sys.stderr)
+            chart_url = _helm_chart_url_from_hits(hits)
+
+            repo_url = DIFY_HELM_REPO
+            if chart_url and ("index.yaml" in chart_url or "dify-helm" in chart_url):
+                repo_url = chart_url.split("/index.yaml")[0] if "index.yaml" in chart_url else DIFY_HELM_REPO
+            if not chart_version and chart_url and _is_tgz_url(chart_url):
+                chart_dir = _fetch_tgz(chart_url, tmp_path)
+                source_msg = chart_url
+            if chart_dir is None:
+                chart_dir = _helm_repo_add_and_pull("dify-helm", repo_url, DIFY_HELM_CHART, tmp_path, chart_version)
+                source_msg = f"{repo_url} (chart: {DIFY_HELM_CHART})"
+            if chart_dir is None and chart_version:
+                print(f"ERROR: 指定した chart version を取得できませんでした: {chart_version}")
+                print("利用可能なバージョンは index.yaml で確認してください。")
+                return 1
 
         if not chart_dir or not (chart_dir / "Chart.yaml").exists():
+            if chart_version:
+                print(f"ERROR: chart version {chart_version} が取得できませんでした。")
+                return 1
             print("取得できませんでした（チャートの取得に失敗）")
             return 0
+
+        meta = _read_chart_metadata(chart_dir)
+        chart_name = meta.get("name") or DIFY_HELM_CHART
+        chart_ver = meta.get("version") or ""
+        app_ver = meta.get("appVersion") or ""
+        values_source = None
+        if values_arg:
+            values_source = values_arg if values_arg.startswith("http") else str(Path(values_arg).resolve())
 
         yaml_out = _run_helm_template(chart_dir, release, namespace, values_path, set_args)
         if not yaml_out:
@@ -417,7 +510,7 @@ def run_helm(
         services = _extract_k8s_services(yaml_out)
         ingresses = _extract_ingresses(yaml_out)
 
-        print(f"Source: {source_msg}\n")
+        print(_format_helm_metadata(chart_name, chart_ver, app_ver, values_source, source_msg))
         if workloads:
             print("## Workloads (Deployment / StatefulSet / DaemonSet / Job / CronJob)\n")
             print(_format_helm_table(workloads, ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"], ["kind", "name", "replicas", "images", "ports", "env", "volumes", "resources"]))
@@ -433,6 +526,52 @@ def run_helm(
         if not workloads and not services and not ingresses:
             print("取得できませんでした（レンダリング結果に該当リソースなし）")
 
+    return 0
+
+
+def run_upgrade(from_ver: str, to_ver: str) -> int:
+    """Non-Skippable を考慮したアップグレード経路を表示"""
+    from docbot.upgrade import (
+        fetch_sidebar,
+        parse_sidebar,
+        compute_upgrade_path,
+        fetch_release_notes,
+        extract_key_steps,
+    )
+
+    sidebar = fetch_sidebar()
+    if not sidebar:
+        print("ERROR: dify-helm _sidebar.md を取得できませんでした。")
+        return 1
+
+    entries = parse_sidebar(sidebar)
+    path = compute_upgrade_path(entries, from_ver, to_ver)
+    if not path:
+        print(f"ERROR: アップグレード経路を計算できませんでした（--from {from_ver} --to {to_ver}）")
+        return 1
+
+    non_skip_in_path = [e for e in path if e["non_skippable"]]
+    print(f"Upgrade path: {from_ver} → {to_ver}")
+    if non_skip_in_path:
+        print(f"⚠️ Non-Skippable 経由必須: {', '.join(e['version'] for e in non_skip_in_path)}")
+    print()
+
+    for e in path:
+        ver = e["version"]
+        ns = " [Non-Skippable]" if e["non_skippable"] else ""
+        print(f"## {ver}{ns}")
+        print(f"Source: {e['url']}")
+        md = fetch_release_notes(e["url"])
+        if md:
+            steps = extract_key_steps(md)
+            if steps:
+                for s in steps[:8]:
+                    print(f"  - {s[:200]}{'…' if len(s) > 200 else ''}")
+            else:
+                lead = (md.split("\n\n")[1:2] or [""])[0][:300]
+                if lead:
+                    print(f"  - {lead.strip()[:200]}…")
+        print()
     return 0
 
 
@@ -496,9 +635,23 @@ def main() -> int:
         p.add_argument("--release", default="dify")
         p.add_argument("--values", dest="values_path", default=None)
         p.add_argument("--set", dest="set_args", action="append", default=[], metavar="KEY=VAL")
+        p.add_argument("--chart-version", "--version", dest="chart_version", default=None, metavar="X.Y.Z",
+                       help="チャートのバージョンを固定（指定必須、フォールバックなし）")
+        p.add_argument("--chart", default=None, metavar="PATH",
+                       help="ローカル .tgz または展開済みディレクトリを直接指定（検索スキップ）")
         args = p.parse_args(argv[1:])
         q = " ".join(args.query).strip() or "Dify Helm Chart"
-        return run_helm(args.base, q, args.lang, args.limit, args.namespace, args.release, args.values_path, args.set_args or [])
+        return run_helm(
+            args.base, q, args.lang, args.limit, args.namespace, args.release,
+            args.values_path, args.set_args or [], args.chart, args.chart_version
+        )
+
+    if argv and argv[0] == "upgrade":
+        p = argparse.ArgumentParser(prog="docbot upgrade", description="Non-Skippable を考慮したアップグレード経路")
+        p.add_argument("--from", dest="from_ver", required=True, metavar="X.Y.Z")
+        p.add_argument("--to", dest="to_ver", required=True, metavar="X.Y.Z")
+        args = p.parse_args(argv[1:])
+        return run_upgrade(args.from_ver, args.to_ver)
 
     if argv and argv[0] == "search":
         argv = argv[1:]
@@ -515,7 +668,8 @@ def main() -> int:
     if not q:
         print("Usage: docbot [search] <query> [--lang ja-jp|en-us] [--limit N]", file=sys.stderr)
         print("       docbot compose <query> [--lang ja-jp|en-us]", file=sys.stderr)
-        print("       docbot helm <query> [--lang ja-jp|en-us] [--namespace NS] [--release NAME] [--values PATH] [--set K=V]", file=sys.stderr)
+        print("       docbot helm [query] [--chart PATH] [--chart-version X.Y.Z] [--values PATH] [--set K=V] ...", file=sys.stderr)
+        print("       docbot upgrade --from X.Y.Z --to X.Y.Z", file=sys.stderr)
         return 2
 
     return run_search(args.base, q, args.lang, args.limit, args.json)

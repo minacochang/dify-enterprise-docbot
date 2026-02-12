@@ -77,7 +77,7 @@ Source: https://raw.githubusercontent.com/langgenius/dify/main/docker/docker-com
 Helm チャートを取得し、helm template でレンダリングして Deployment/StatefulSet/Service 等を表で要約する。
 
 ```
-python -m docbot.cli helm "<query>" [--lang ja-jp|en-us] [--limit N] [--namespace NS] [--release NAME] [--values PATH] [--set K=V ...] [--base URL]
+python -m docbot.cli helm [query] [--chart PATH] [--chart-version X.Y.Z] [--values PATH] [--set K=V ...] [--base URL]
 ```
 
 | オプション | 説明 | デフォルト |
@@ -86,27 +86,55 @@ python -m docbot.cli helm "<query>" [--lang ja-jp|en-us] [--limit N] [--namespac
 | `--release` | helm template の release 名 | dify |
 | `--values` | values ファイルのパス or URL | なし |
 | `--set` | helm --set（複数可） | なし |
+| `--chart-version` / `--version` | チャートのバージョンを固定（指定必須、フォールバックなし） | なし |
+| `--chart` | ローカル .tgz または展開済みディレクトリを直接指定（検索スキップ） | なし |
 
 - **要 helm CLI**: 未インストール時は「helm が必要です」と表示して終了
 - 検索からチャートが見つからない場合は `https://langgenius.github.io/dify-helm` をフォールバック
+- `--chart-version` 指定時はフォールバックせず、取得できない場合はエラー終了
+- 出力先頭に Chart / AppVersion / Values / RenderedAt / Source のメタデータを表示
 
 **例**:
 
 ```bash
 python -m docbot.cli helm "Dify Helm Chart" --lang en-us
+python -m docbot.cli helm "Dify Helm Chart" --chart-version 3.7.5 --values ./values.yaml
+python -m docbot.cli helm --chart ./dify-3.7.4.tgz
 python -m docbot.cli helm "dify-helm" --namespace my-ns --set api.replicas=2
 ```
 
 **出力例**:
 
 ```
-Source: https://langgenius.github.io/dify-helm (chart: dify)
+- **Chart**: dify 3.7.5
+- **AppVersion**: 1.11.4
+- **Values**: ./values.yaml
+- **RenderedAt**: 2026-02-12T06:14:34Z
+- **Source**: https://langgenius.github.io/dify-helm (chart: dify)
 
 ## Workloads (Deployment / StatefulSet / DaemonSet / Job / CronJob)
 
 | kind | name | replicas | images | ...
 | Deployment | dify-api | 1 | langgenius/dify-api:... | ...
 ```
+
+---
+
+## upgrade
+
+Non-Skippable を考慮したアップグレード経路を表示する。dify-helm release notes から必須経由バージョンを抽出し、`--from` から `--to` の各ホップごとに主な作業を箇条書きで出力する。
+
+```
+python -m docbot.cli upgrade --from X.Y.Z --to X.Y.Z
+```
+
+**例**:
+
+```bash
+python -m docbot.cli upgrade --from 2.8.2 --to 3.6.5
+```
+
+出力には根拠 URL（release notes の該当ページ）が含まれる。
 
 ---
 

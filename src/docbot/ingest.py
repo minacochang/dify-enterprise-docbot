@@ -6,6 +6,7 @@ Dify Enterprise docs クロール＆インデックス作成。
 """
 import asyncio
 import os
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -17,7 +18,12 @@ from lxml import etree
 
 from docbot.config import CFG
 from docbot.storage import open_db, upsert_page
-from docbot.extract import extract_index_fields, extract_headings_and_body_prefix
+from docbot.extract import (
+    extract_index_fields,
+    extract_headings_and_body_prefix,
+    extract_index_fields_markdown,
+    extract_headings_and_body_prefix_markdown,
+)
 
 UA = {"User-Agent": "docbot/0.1 (+local)"}
 
@@ -36,13 +42,17 @@ def detect_lang(url: str) -> str:
     return parts[3] if len(parts) >= 4 else "unknown"
 
 
-async def fetch_text(client: httpx.AsyncClient, url: str) -> str | None:
+async def fetch_text(client: httpx.AsyncClient, url: str, accept_any_text: bool = False) -> str | None:
     try:
         r = await client.get(url, headers=UA, timeout=20, follow_redirects=True)
         if r.status_code != 200:
             return None
-        ctype = r.headers.get("content-type", "")
-        if "text/html" not in ctype and "application/xml" not in ctype and "text/xml" not in ctype:
+        ctype = (r.headers.get("content-type") or "").lower()
+        allowed = (
+            "text/html" in ctype or "application/xml" in ctype or "text/xml" in ctype or
+            (accept_any_text and ("text/" in ctype or "application/" in ctype or not ctype))
+        )
+        if not allowed:
             return None
         return r.text
     except Exception:
@@ -82,6 +92,24 @@ async def try_sitemap(client: httpx.AsyncClient) -> list[str] | None:
     return urls or None
 
 
+def extract_helm_page_links(sidebar_content: str) -> list[str]:
+    """
+    dify-helm _sidebar.md から /pages/X.md リンクを抽出し、フル URL に変換。
+    形式: * [v3.7.5](/pages/3_7_5.md)
+    """
+    base = CFG.helm_release_base
+    seen = set()
+    out = []
+    for m in re.finditer(r"\(/pages/([a-zA-Z0-9_.-]+)\.md\)", sidebar_content):
+        page_id = m.group(1)
+        if page_id in seen:
+            continue
+        seen.add(page_id)
+        url = f"{base}/pages/{page_id}.md"
+        out.append(url)
+    return out
+
+
 def extract_nav_links(base_url: str, html: str) -> list[str]:
     soup = BeautifulSoup(html, "lxml")
     out = []
@@ -96,6 +124,39 @@ def extract_nav_links(base_url: str, html: str) -> list[str]:
         seen.add(full_url)
         out.append(full_url)
     return out
+
+
+async def ingest_helm_release_notes(conn, client: httpx.AsyncClient) -> int:
+    """dify-helm release notes をインデックスに追加"""
+    base = CFG.helm_release_base
+    sidebar_url = f"{base}/_sidebar.md"
+
+    sidebar = await fetch_text(client, sidebar_url, accept_any_text=True)
+    if not sidebar:
+        print("Note: dify-helm _sidebar.md fetch failed, skipping release notes.")
+        return 0
+
+    urls = extract_helm_page_links(sidebar)
+    urls.append(f"{base}/README.md")
+    urls = list(dict.fromkeys(urls))
+
+    count = 0
+    now = int(time.time())
+    lang = "en-us"
+
+    for url in urls:
+        md = await fetch_text(client, url, accept_any_text=True)
+        if not md:
+            continue
+        title, hpath, lead = extract_index_fields_markdown(md)
+        headings, body_prefix = extract_headings_and_body_prefix_markdown(md, body_prefix_len=4000)
+        ngrams_source = f"{title}\n{hpath}\n{lead}\n{headings}\n{body_prefix}"
+        ngrams = make_ngrams(ngrams_source)
+        upsert_page(conn, url, lang, title, hpath, lead, headings, body_prefix, ngrams, now)
+        count += 1
+        print(f"[helm+{count}] {url}")
+
+    return count
 
 
 def make_ngrams(text: str, ns=(2, 3), limit=4000) -> str:
@@ -160,8 +221,9 @@ async def main() -> None:
                         if link not in done:
                             queue.append((link, depth + 1))
 
+        helm_count = await ingest_helm_release_notes(conn, client)
     conn.close()
-    print(f"Done. {count} pages indexed.")
+    print(f"Done. {count} enterprise docs + {helm_count} helm release notes indexed.")
 
 
 if __name__ == "__main__":

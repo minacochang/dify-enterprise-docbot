@@ -35,3 +35,6 @@ data/*
 .env
 .env.local
 *.log
+
+# Helm chart のダウンロード（テスト用）
+*.tgz
