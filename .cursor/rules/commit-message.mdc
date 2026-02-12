@@ -1,0 +1,9 @@
+---
+description: Commit messages format <label>: <message> in English
+alwaysApply: true
+---
+
+コミットメッセージは **<ラベル>: <メッセージ>** の形式で、**全体を英語** で書く。
+- 例: feat: Add commit message rules in Japanese
+- ラベル: fix, feat, docs, style, refactor, chore など
+- メッセージ: 何を変えたかが分かる英語で簡潔に（1行目50文字目安）
