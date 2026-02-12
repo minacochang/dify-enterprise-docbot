@@ -28,6 +28,36 @@ def extract_index_fields(html: str) -> tuple[str, str, str]:
 
     return title, hpath, lead
 
+
+def extract_headings_and_body_prefix(html: str, body_prefix_len: int = 4000) -> tuple[str, str]:
+    """
+    ja-jp 検索用：h2/h3 見出しと本文先頭を抽出。
+    headings: h2,h3 のテキストを | で結合
+    body_prefix: 本文（p,li等）の先頭 N 文字
+    """
+    doc = Document(html)
+    main_html = doc.summary(html_partial=True)
+    soup = BeautifulSoup(main_html, "lxml")
+
+    headings_parts = []
+    for tag in soup.find_all(["h2", "h3"]):
+        t = tag.get_text(" ", strip=True)
+        if t:
+            headings_parts.append(t)
+    headings = " | ".join(headings_parts[:60])
+
+    body_parts = []
+    for el in soup.find_all(["p", "li", "td", "th"]):
+        t = el.get_text(" ", strip=True)
+        if t:
+            body_parts.append(t)
+            if sum(len(x) for x in body_parts) >= body_prefix_len:
+                break
+    body_prefix = " ".join(body_parts)[:body_prefix_len]
+
+    return headings, body_prefix
+
+
 def extract_main_text_with_headings(html: str) -> list[dict]:
     """
     QA用：見出し単位で本文をセクション化

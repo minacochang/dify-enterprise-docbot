@@ -15,7 +15,7 @@ from lxml import etree
 
 from config import CFG
 from storage import open_db, upsert_page
-from extract import extract_index_fields
+from extract import extract_index_fields, extract_headings_and_body_prefix
 
 UA = {"User-Agent": "docbot/0.1 (+local)"}
 
@@ -133,11 +133,14 @@ async def main() -> None:
                     continue
                 lang = detect_lang(url)
                 title, hpath, lead = extract_index_fields(html)
+                headings = ""
+                body_prefix = ""
                 ngrams = ""
                 if lang == "ja-jp":
-                    base_text = f"{title}\n{hpath}\n{lead}"
-                    ngrams = make_ngrams(base_text)
-                upsert_page(conn, url, lang, title, hpath, lead, ngrams, now)
+                    headings, body_prefix = extract_headings_and_body_prefix(html, body_prefix_len=4000)
+                    ngrams_source = f"{title}\n{hpath}\n{lead}\n{headings}\n{body_prefix}"
+                    ngrams = make_ngrams(ngrams_source)
+                upsert_page(conn, url, lang, title, hpath, lead, headings, body_prefix, ngrams, now)
                 count += 1
                 print(f"[{count}] {url}")
 
